@@ -1,0 +1,83 @@
+{
+  "name": "patchbot",
+  "version": "1.0.0",
+  "description": "AI-powered Pull Request reviewer with intelligent dependency analysis and breaking changes detection",
+  "type": "module",
+  "author": "kmilo93sd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kmilo93sd/PatchBot.git"
+  },
+  "keywords": [
+    "pull-request",
+    "code-review",
+    "ai",
+    "dependency-analysis",
+    "breaking-changes",
+    "github",
+    "aws-lambda",
+    "tree-sitter",
+    "java",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "build:watch": "tsc --watch",
+    "dev:receptor": "ts-node-esm src/pr-receptor/index.ts",
+    "dev:processor": "ts-node-esm src/pr-processor/index.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:indexer": "npx tsx examples/test-indexer.ts",
+    "test:simple": "npx tsx examples/test-simple.ts",
+    "example:index": "npx tsx examples/index-java-project.ts",
+    "example:breaking": "npx tsx examples/breaking-changes-detection.ts",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .aws-sam/build",
+    "sam:build": "npm run build && sam build",
+    "sam:local": "npm run sam:build && sam local start-api",
+    "sam:invoke:receptor": "npm run sam:build && sam local invoke PRReceptorFunction --event events/pr-receptor-event.json",
+    "sam:invoke:processor": "npm run sam:build && sam local invoke PRProcessorFunction --event events/pr-processor-event.json",
+    "deploy:internal": "npm run sam:build && sam deploy --stack-name patchbot-internal --parameter-overrides envName=internal",
+    "deploy:dev": "npm run sam:build && sam deploy --stack-name patchbot-development --parameter-overrides envName=development",
+    "deploy:prod": "npm run sam:build && sam deploy --stack-name patchbot-production --parameter-overrides envName=production LambdaMemory=1024"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.8.0",
+    "@aws-lambda-powertools/metrics": "^2.8.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.879.0",
+    "@aws-sdk/client-dynamodb": "^3.879.0",
+    "@aws-sdk/client-sqs": "^3.879.0",
+    "@aws-sdk/credential-providers": "^3.879.0",
+    "@aws-sdk/lib-dynamodb": "^3.879.0",
+    "@langchain/aws": "^0.1.14",
+    "@langchain/core": "^0.3.72",
+    "@langchain/langgraph": "^0.4.8",
+    "langchain": "^0.3.31",
+    "octokit": "^5.0.3",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-java": "^0.23.5",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.131",
+    "@types/jest": "^29.5.8",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.1",
+    "tsc-alias": "^1.8.8",
+    "typescript": "^5.3.2"
+  }
+}

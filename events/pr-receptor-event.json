@@ -1,0 +1,19 @@
+{
+  "httpMethod": "POST",
+  "path": "/review-pr",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-GitHub-Event": "pull_request",
+    "X-GitHub-Delivery": "12345678-1234-1234-1234-123456789012",
+    "X-Hub-Signature-256": "sha256=test_signature",
+    "User-Agent": "GitHub-Hookshot/abc123"
+  },
+  "body": "{\"action\":\"opened\",\"number\":123,\"pull_request\":{\"number\":123,\"title\":\"Add new feature for user authentication\",\"body\":\"This PR adds JWT authentication to the user service\",\"user\":{\"login\":\"developer123\"},\"head\":{\"sha\":\"abc123def456789012345678901234567890abcd\",\"ref\":\"feature/jwt-auth\"},\"base\":{\"ref\":\"main\"},\"html_url\":\"https://github.com/owner/repo-name/pull/123\",\"state\":\"open\",\"draft\":false},\"repository\":{\"full_name\":\"owner/repo-name\",\"name\":\"repo-name\",\"owner\":{\"login\":\"owner\"},\"html_url\":\"https://github.com/owner/repo-name\"}}",
+  "isBase64Encoded": false,
+  "requestContext": {
+    "requestId": "test-request-123",
+    "stage": "internal",
+    "httpMethod": "POST",
+    "path": "/review-pr"
+  }
+}

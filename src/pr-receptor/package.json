@@ -1,0 +1,7 @@
+{
+  "name": "pr-receptor",
+  "version": "1.0.0",
+  "description": "Función Lambda receptora de webhooks de GitHub PR",
+  "main": "app.js",
+  "type": "module"
+}

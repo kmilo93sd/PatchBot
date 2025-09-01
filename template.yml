@@ -1,0 +1,259 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  PR Revisor API - Sistema asíncrono de revisión de Pull Requests con IA
+  Sigue estándares arquitectónicos NBX para agentes serverless
+
+# Parámetros estándar NBX
+Parameters:
+  envName:
+    Type: String
+    Description: Nombre del ambiente
+    Default: internal
+    AllowedValues:
+      - internal
+      - development
+      - staging
+      - production
+  
+  NRAccountId:
+    Type: String
+    Description: Your New Relic account ID; necessary for distributed tracing.
+    Default: "3357944"
+  
+  deployedVersion:
+    Type: String
+    Default: 1.0.0
+    Description: Versión del despliegue
+  
+  LambdaMemory:
+    Type: Number
+    Default: 512
+    Description: Memoria asignada a Lambda (MB)
+    MinValue: 128
+    MaxValue: 10240
+  
+  LambdaTimeout:
+    Type: Number
+    Default: 180
+    Description: Timeout de Lambda (segundos)
+
+# Variables globales estándar NBX
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+    Timeout: !Ref LambdaTimeout
+    MemorySize: !Ref LambdaMemory
+    Environment:
+      Variables:
+        NODE_ENV: !Ref envName
+        DEPLOYED_VERSION: !Ref deployedVersion
+        NODE_OPTIONS: --enable-source-maps
+        LOG_LEVEL: info
+        LOG_FORMAT: json
+        ENABLE_REQUEST_LOGGING: true
+        LOG_SAMPLE_RATE: 1.0
+        POWERTOOLS_SERVICE_NAME: pr-revisor
+        POWERTOOLS_METRICS_NAMESPACE: PRRevisor
+        # New Relic estándar
+        NEW_RELIC_ACCOUNT_ID: !Ref NRAccountId
+        NEW_RELIC_TRUSTED_ACCOUNT_KEY: !Ref NRAccountId
+        NEW_RELIC_EXTENSION_SEND_FUNCTION_LOGS: true
+        NEW_RELIC_EXTENSION_LOG_LEVEL: DEBUG
+        NEW_RELIC_SERVERLESS_MODE_ENABLED: true
+
+Resources:
+  # ================================
+  # CAPAS LAMBDA
+  # ================================
+  AwsSdkLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${envName}-aws-sdk-layer"
+      Description: Layer con AWS SDK v3 y dependencias básicas
+      ContentUri: layers/aws-sdk-layer/
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Retain
+
+  # ================================
+  # DYNAMODB - TABLA DE JOBS
+  # ================================
+  ReviewJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "review-jobs-${envName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: jobId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: jobId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: StatusIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # ================================
+  # SQS - COLA DE PROCESAMIENTO
+  # ================================
+  PRProcessQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "pr-process-queue-${envName}"
+      VisibilityTimeout: 900  # 15 minutos (5x timeout de función)
+      MessageRetentionPeriod: 1209600  # 14 días
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PRProcessDLQ.Arn
+        maxReceiveCount: 3
+
+  # Dead Letter Queue
+  PRProcessDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "pr-process-queue-dlq-${envName}"
+      MessageRetentionPeriod: 1209600  # 14 días
+
+  # ================================
+  # API GATEWAY
+  # ================================
+  PRRevisorApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${envName}-pr-revisor-api"
+      StageName: !Ref envName
+      Cors:
+        AllowMethods: "'POST, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Hub-Signature-256'"
+        AllowOrigin: "'*'"
+
+  # ================================
+  # FUNCIÓN LAMBDA - RECEPTOR
+  # ================================
+  PRReceptorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Join ["-", [!Ref envName, "nbx", "pr-receptor", "lambda"]]
+      CodeUri: dist/pr-receptor/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref AwsSdkLayer
+        # Layer de New Relic para monitoreo
+        - arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:8
+      Environment:
+        Variables:
+          NEW_RELIC_LAMBDA_HANDLER: index.handler
+          # Variables de aplicación
+          REVIEW_JOBS_TABLE: !Ref ReviewJobsTable
+          PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
+          REQUEST_ID_HEADER: x-request-id
+      Policies:
+        # Política para obtener licencia de New Relic
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
+        # Permisos DynamoDB
+        - DynamoDBWritePolicy:
+            TableName: !Ref ReviewJobsTable
+        # Permisos SQS
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PRProcessQueue.QueueName
+      Events:
+        PRWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PRRevisorApi
+            Path: /review-pr
+            Method: POST
+
+  # ================================
+  # FUNCIÓN LAMBDA - PROCESADOR
+  # ================================
+  PRProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Join ["-", [!Ref envName, "nbx", "pr-processor", "lambda"]]
+      CodeUri: dist/pr-processor/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Timeout: 900  # 15 minutos para procesamiento IA
+      MemorySize: 1024  # Más memoria para procesamiento
+      Layers:
+        - !Ref AwsSdkLayer
+        # TODO: Re-habilitar New Relic cuando sea compatible con ES Modules
+        # - arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:8
+      Environment:
+        Variables:
+          # NEW_RELIC_LAMBDA_HANDLER: app.lambdaHandler
+          # Variables de aplicación
+          REVIEW_JOBS_TABLE: !Ref ReviewJobsTable
+          PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
+      Policies:
+        # Política para obtener licencia de New Relic
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
+        # Permisos DynamoDB
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReviewJobsTable
+        # Permisos Bedrock (para la fase 3)
+        - Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: 
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/us.anthropic.claude-sonnet-4-20250514-v1:0"
+      Events:
+        ProcessQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PRProcessQueue.Arn
+            BatchSize: 1  # Procesar de a uno por la complejidad
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+# ================================
+# OUTPUTS
+# ================================
+Outputs:
+  PRRevisorApiUrl:
+    Description: "URL del API Gateway para webhooks de GitHub"
+    Value: !Sub "https://${PRRevisorApi}.execute-api.${AWS::Region}.amazonaws.com/${envName}/review-pr"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+  
+  ReviewJobsTableName:
+    Description: "Nombre de la tabla DynamoDB de jobs"
+    Value: !Ref ReviewJobsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-ReviewJobsTable"
+  
+  PRProcessQueueUrl:
+    Description: "URL de la cola SQS de procesamiento"
+    Value: !Ref PRProcessQueue
+    Export:
+      Name: !Sub "${AWS::StackName}-ProcessQueue"

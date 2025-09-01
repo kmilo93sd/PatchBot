@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "test-msg-62",
+      "receiptHandle": "test-receipt-handle",
+      "body": "{\"requestId\":\"test-request-62\",\"payload\":{\"jobId\":\"test-job-62\",\"repository\":\"nubox-spa/sas-banking-bff\",\"prNumber\":62,\"sha\":\"latest\",\"action\":\"opened\",\"timestamp\":1693526400000}}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1693526400000",
+        "SenderId": "AIDAIENQZJOLO23YVJ4VO",
+        "ApproximateFirstReceiveTimestamp": "1693526400000"
+      },
+      "messageAttributes": {},
+      "md5OfBody": "test-md5-hash",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:pr-jobs-queue",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

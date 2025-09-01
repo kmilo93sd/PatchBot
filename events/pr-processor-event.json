@@ -1,0 +1,37 @@
+{
+  "Records": [
+    {
+      "messageId": "test-message-123",
+      "receiptHandle": "test-receipt-handle",
+      "body": "{\"requestId\":\"test-request-123\",\"timestamp\":\"2024-01-01T12:00:00.000Z\",\"source\":\"pr-receptor\",\"payload\":{\"jobId\":\"job-uuid-123\",\"repository\":\"owner/repo-name\",\"prNumber\":123,\"action\":\"opened\",\"sha\":\"abc123def456789012345678901234567890abcd\",\"title\":\"Add payment processing with Stripe integration\",\"author\":\"developer123\",\"body\":\"This PR adds secure payment processing using Stripe API with proper error handling and validation\",\"githubDeliveryId\":\"12345678-1234-1234-1234-123456789012\",\"prUrl\":\"https://github.com/owner/repo-name/pull/123\"},\"metadata\":{\"retryCount\":0,\"correlationId\":\"test-request-123\",\"messageId\":\"test-request-123\",\"sendTimestamp\":\"2024-01-01T12:00:00.000Z\"}}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1640995200000",
+        "SenderId": "AIDACKCEVSQ6C2EXAMPLE",
+        "ApproximateFirstReceiveTimestamp": "1640995200000"
+      },
+      "messageAttributes": {
+        "requestId": {
+          "stringValue": "test-request-123",
+          "dataType": "String"
+        },
+        "jobId": {
+          "stringValue": "job-uuid-123",
+          "dataType": "String"
+        },
+        "repository": {
+          "stringValue": "owner/repo-name",
+          "dataType": "String"
+        },
+        "prNumber": {
+          "stringValue": "123",
+          "dataType": "Number"
+        }
+      },
+      "md5OfBody": "test-md5-hash",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:pr-process-queue-internal",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

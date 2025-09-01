@@ -1,0 +1,11 @@
+{
+  "name": "pr-processor",
+  "version": "1.0.0",
+  "description": "Función Lambda procesadora de PRs con análisis IA",
+  "main": "app.js",
+  "type": "module",
+  "dependencies": {
+    "ajv-formats": "^3.0.1",
+    "octokit": "^5.0.3"
+  }
+}
