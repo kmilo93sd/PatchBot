@@ -216,6 +216,7 @@ export interface AIAnalysisRequest {
   sha: string;
   prData: PRData;
   fileChanges: FileChange[];
+  dependencyContext?: any; // Contexto de dependencias opcional
 }
 
 export interface FileChange {

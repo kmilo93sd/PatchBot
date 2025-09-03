@@ -135,6 +135,22 @@ Resources:
       MessageRetentionPeriod: 1209600  # 14 días
 
   # ================================
+  # S3 - BUCKET DE ÍNDICES
+  # ================================
+  DependencyIndexBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "dependency-indices-${envName}-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldIndices
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpirationInDays: 30
+
+  # ================================
   # API GATEWAY
   # ================================
   PRRevisorApi:
@@ -212,6 +228,8 @@ Resources:
           # Variables de aplicación
           REVIEW_JOBS_TABLE: !Ref ReviewJobsTable
           PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
+          DEPENDENCY_INDEX_BUCKET: !Ref DependencyIndexBucket
+          ENABLE_DEPENDENCY_ANALYSIS: true
       Policies:
         # Política para obtener licencia de New Relic
         - AWSSecretsManagerGetSecretValuePolicy:
@@ -219,6 +237,9 @@ Resources:
         # Permisos DynamoDB
         - DynamoDBCrudPolicy:
             TableName: !Ref ReviewJobsTable
+        # Permisos S3 para leer índices de dependencias
+        - S3ReadPolicy:
+            BucketName: !Ref DependencyIndexBucket
         # Permisos Bedrock (para la fase 3)
         - Statement:
           - Effect: Allow

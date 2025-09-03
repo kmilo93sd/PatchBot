@@ -18,6 +18,7 @@ import type {
   CodeSuggestion,
   FileChange
 } from '@shared/types/index.js';
+import type { DependencyAnalysisResult } from './dependencyAnalyzer.js';
 
 // =============================================================================
 // AI ANALYZER CLASS
@@ -64,8 +65,8 @@ export class AIAnalyzer {
       // 2. Preparar contexto para IA
       const analysisContext = this.prepareAnalysisContext(request, validFiles);
 
-      // 3. Generar prompt para Claude
-      const prompt = this.generatePrompt(analysisContext);
+      // 3. Generar prompt para Claude (con contexto de dependencias si está disponible)
+      const prompt = this.generatePrompt(analysisContext, request.dependencyContext);
 
       // 4. Llamar a Bedrock
       const aiResponse = await this.callBedrock(prompt);
@@ -203,8 +204,8 @@ export class AIAnalyzer {
     };
   }
 
-  private generatePrompt(context: any): string {
-    return `Eres un experto revisor de código. Analiza el siguiente Pull Request y proporciona un análisis estructurado.
+  private generatePrompt(context: any, dependencyContext?: DependencyAnalysisResult): string {
+    let prompt = `Eres un experto revisor de código. Analiza el siguiente Pull Request y proporciona un análisis estructurado.
 
 **Contexto del PR:**
 - Repositorio: ${context.repository}
@@ -212,9 +213,38 @@ export class AIAnalyzer {
 - Autor: ${context.prAuthor}
 - Archivos modificados: ${context.totalFiles}
 - Líneas agregadas: ${context.totalAdditions}
-- Líneas eliminadas: ${context.totalDeletions}
+- Líneas eliminadas: ${context.totalDeletions}`;
 
-**Archivos modificados:**
+    // Agregar contexto de dependencias si está disponible
+    if (dependencyContext) {
+      prompt += `\n\n**Análisis de Dependencias e Impacto:**
+- Nivel de riesgo detectado: ${dependencyContext.riskLevel}
+- Breaking changes detectados: ${dependencyContext.breakingChanges.length}
+- Archivos afectados: ${dependencyContext.affectedFiles.length}
+- Clases afectadas: ${dependencyContext.affectedClasses.join(', ') || 'ninguna'}
+- Métodos afectados: ${dependencyContext.affectedMethods.join(', ') || 'ninguno'}`;
+
+      if (dependencyContext.breakingChanges.length > 0) {
+        prompt += `\n\n**Breaking Changes Detectados:**`;
+        dependencyContext.breakingChanges.forEach(bc => {
+          prompt += `\n- ${bc.type} (${bc.severity}): ${bc.description}`;
+        });
+      }
+
+      if (dependencyContext.dependencies.added.length > 0) {
+        prompt += `\n\n**Nuevas Dependencias:** ${dependencyContext.dependencies.added.join(', ')}`;
+      }
+
+      if (dependencyContext.dependencies.removed.length > 0) {
+        prompt += `\n\n**Dependencias Eliminadas:** ${dependencyContext.dependencies.removed.join(', ')}`;
+      }
+
+      if (dependencyContext.affectedFiles.length > 0) {
+        prompt += `\n\n**Archivos que dependen del código modificado:**\n${dependencyContext.affectedFiles.join('\n')}`;
+      }
+    }
+
+    prompt += `\n\n**Archivos modificados:**
 ${context.files.map((file: FileChange) => `
 - **${file.filename}** (${file.status})
   - +${file.additions} -${file.deletions}
@@ -222,9 +252,9 @@ ${context.files.map((file: FileChange) => `
 `).join('\n')}
 
 **Instrucciones:**
-1. Proporciona un resumen ejecutivo del PR
-2. Identifica issues de código (security, performance, maintainability, bugs, style)
-3. Sugiere mejoras específicas
+1. Proporciona un resumen ejecutivo del PR${dependencyContext ? ', considerando el impacto en archivos dependientes' : ''}
+2. Identifica issues de código (security, performance, maintainability, bugs, style)${dependencyContext && dependencyContext.breakingChanges.length > 0 ? ', prestando especial atención a los breaking changes detectados' : ''}
+3. Sugiere mejoras específicas${dependencyContext ? ' y cómo manejar el impacto en otros archivos' : ''}
 4. Responde SOLO en formato JSON válido:
 
 \`\`\`json
@@ -251,6 +281,8 @@ ${context.files.map((file: FileChange) => `
   ]
 }
 \`\`\``;
+
+    return prompt;
   }
 
   private parseAIResponse(response: string): any {

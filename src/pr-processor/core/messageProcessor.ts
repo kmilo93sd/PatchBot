@@ -8,6 +8,7 @@ import { ValidationError, ProcessingError } from '@shared/types/errors.js';
 import { validators } from '@shared/validation/schemas.js';
 import { JobManager } from './jobManager.js';
 import { AIAnalyzer } from './aiAnalyzer.js';
+import { DependencyAnalyzer } from './dependencyAnalyzer.js';
 import { GitHubAdapter } from '../adapters/githubAdapter.js';
 
 import type { 
@@ -26,6 +27,7 @@ export class MessageProcessor {
   private readonly context: LambdaConfig['context'];
   private readonly jobManager: JobManager;
   private readonly aiAnalyzer: AIAnalyzer;
+  private readonly dependencyAnalyzer: DependencyAnalyzer;
   private readonly githubAdapter: GitHubAdapter;
 
   constructor(config: LambdaConfig) {
@@ -40,6 +42,11 @@ export class MessageProcessor {
     this.aiAnalyzer = new AIAnalyzer({ 
       logger: this.logger,
       metrics: this.metrics 
+    });
+    
+    this.dependencyAnalyzer = new DependencyAnalyzer({
+      logger: this.logger,
+      metrics: this.metrics
     });
     
     this.githubAdapter = new GitHubAdapter({ 
@@ -93,18 +100,38 @@ export class MessageProcessor {
         return;
       }
 
-      // 6. Realizar análisis con IA
+      // 6. Realizar análisis de dependencias
+      const dependencyAnalysis = await this.dependencyAnalyzer.analyzeChanges({
+        repository: message.payload.repository,
+        fileChanges: fileChanges,
+        prNumber: message.payload.prNumber
+      });
+
+      this.logger.info('Dependency analysis completed', {
+        jobId,
+        breakingChanges: dependencyAnalysis.breakingChanges.length,
+        affectedFiles: dependencyAnalysis.affectedFiles.length,
+        riskLevel: dependencyAnalysis.riskLevel
+      });
+
+      // 7. Realizar análisis con IA (mejorado con contexto de dependencias)
       const analysisResult = await this.aiAnalyzer.analyzeCode({
         jobId,
         repository: message.payload.repository,
         prNumber: message.payload.prNumber,
         sha: message.payload.sha,
         prData: message.payload,
-        fileChanges
+        fileChanges,
+        dependencyContext: dependencyAnalysis
       });
 
-      // 7. Crear comentarios de revisión en GitHub
-      await this.createReviewComments(message.payload.repository, message.payload.prNumber, analysisResult);
+      // 8. Crear comentarios de revisión en GitHub (incluyendo breaking changes)
+      await this.createReviewComments(
+        message.payload.repository, 
+        message.payload.prNumber, 
+        analysisResult,
+        dependencyAnalysis
+      );
 
       // 8. Actualizar estado del job a 'completed'
       await this.jobManager.updateJobStatus(jobId, 'completed');
@@ -174,7 +201,8 @@ export class MessageProcessor {
   private async createReviewComments(
     repository: string, 
     prNumber: number, 
-    analysisResult: AIAnalysisResult
+    analysisResult: AIAnalysisResult,
+    dependencyAnalysis?: any
   ): Promise<void> {
     const { issues, suggestions } = analysisResult.analysis;
 
