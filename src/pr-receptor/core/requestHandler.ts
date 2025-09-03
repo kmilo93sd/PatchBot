@@ -5,19 +5,17 @@
 import { v4 as uuidv4 } from 'uuid';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 
-import { WebhookValidator, ActionValidator } from '@shared/validation/validators.js';
-import { JobManager } from './jobManager.js';
+import { WebhookValidator, ActionValidator } from '../shared/validation/validators.js';
 import { SQSAdapter } from '../adapters/sqsAdapter.js';
-import { ValidationError } from '@shared/types/errors.js';
-import { getCurrentTimestamp } from '@shared/utils/index.js';
-import { MESSAGES } from '@shared/constants/index.js';
+import { ValidationError } from '../shared/types/errors.js';
+import { getCurrentTimestamp } from '../shared/utils/index.js';
+import { MESSAGES } from '../shared/constants/index.js';
 
 import type { 
   LambdaConfig, 
   PRReceptorResponse, 
-  CreateJobRequestOutput,
   PRProcessMessage 
-} from '@shared/types/index.js';
+} from '../shared/types/index.js';
 
 // =============================================================================
 // REQUEST HANDLER CLASS
@@ -27,17 +25,12 @@ export class RequestHandler {
   private readonly logger: LambdaConfig['logger'];
   private readonly metrics: LambdaConfig['metrics'];
   private readonly context: LambdaConfig['context'];
-  private readonly jobManager: JobManager;
   private readonly sqsAdapter: SQSAdapter;
 
   constructor(config: LambdaConfig) {
     this.logger = config.logger;
     this.metrics = config.metrics;
     this.context = config.context;
-    
-    this.jobManager = new JobManager({ 
-      logger: this.logger 
-    });
     
     this.sqsAdapter = new SQSAdapter({ 
       logger: this.logger 
@@ -90,25 +83,16 @@ export class RequestHandler {
       action: prData.action
     });
 
-    // 6. Crear job request
-    const createJobRequest: CreateJobRequestOutput = {
-      jobId,
-      requestId,
-      timestamp,
-      ...prData
-    };
-
-    // 7. Crear job en DynamoDB
-    await this.jobManager.createJob(createJobRequest);
-
-    // 8. Crear mensaje SQS
+    // 6. Crear mensaje SQS
     const sqsMessage: PRProcessMessage = {
       requestId,
       timestamp,
       source: 'pr-receptor',
       payload: {
         jobId,
-        ...prData
+        action: prData.action,
+        repository: prData.repository,
+        prNumber: prData.prNumber
       },
       metadata: {
         retryCount: 0,

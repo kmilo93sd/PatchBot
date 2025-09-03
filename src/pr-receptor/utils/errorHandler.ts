@@ -9,10 +9,10 @@ import {
   ExternalServiceError,
   ProcessingError,
   type ErrorDetails
-} from '@shared/types/errors.js';
+} from '../shared/types/errors.js';
 
-import { HTTP_STATUS } from '@shared/constants/index.js';
-import { sanitizeLogData } from '@shared/utils/index.js';
+import { HTTP_STATUS } from '../shared/constants/index.js';
+import { sanitizeLogData } from '../shared/utils/index.js';
 
 // =============================================================================
 // ERROR HANDLER CLASS

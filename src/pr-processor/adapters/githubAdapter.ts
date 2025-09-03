@@ -4,15 +4,15 @@
 
 import { Octokit } from 'octokit';
 
-import { GitHubAPIError, NotFoundError } from '@shared/types/errors.js';
-import { TIMEOUTS } from '@shared/constants/index.js';
+import { GitHubAPIError, NotFoundError } from '../shared/types/errors.js';
+import { TIMEOUTS } from '../shared/constants/index.js';
 
 import type { 
   ServiceConfig,
   GitHubPullRequest,
   FileChange,
   ReviewComment
-} from '@shared/types/index.js';
+} from '../shared/types/index.js';
 
 // =============================================================================
 // GITHUB ADAPTER CLASS

@@ -1,0 +1,9 @@
+{
+  "name": "tree-sitter-layer",
+  "version": "1.0.0",
+  "description": "Lambda Layer con tree-sitter y tree-sitter-java para análisis de código",
+  "dependencies": {
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-java": "^0.23.5"
+  }
+}

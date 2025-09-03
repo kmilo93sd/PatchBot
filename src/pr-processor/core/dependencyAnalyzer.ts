@@ -11,8 +11,8 @@ import type {
     BreakingChange,
     FileAnalysis
 } from '../../dependency-indexer/types/DependencyTypes.js';
-import type { FileChange } from '@shared/types/index.js';
-import type { ServiceConfig } from '@shared/types/index.js';
+import type { FileChange } from '../shared/types/index.js';
+import type { ServiceConfig } from '../shared/types/index.js';
 
 // =============================================================================
 // TYPES

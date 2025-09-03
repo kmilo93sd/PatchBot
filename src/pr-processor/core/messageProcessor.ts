@@ -4,18 +4,17 @@
 
 import { SQSRecord } from 'aws-lambda';
 
-import { ValidationError, ProcessingError } from '@shared/types/errors.js';
-import { validators } from '@shared/validation/schemas.js';
-import { JobManager } from './jobManager.js';
+import { ValidationError, ProcessingError } from '../shared/types/errors.js';
+import { validators } from '../shared/validation/schemas.js';
 import { AIAnalyzer } from './aiAnalyzer.js';
-import { DependencyAnalyzer } from './dependencyAnalyzer.js';
+import { S3IndexLoader } from '../adapters/s3IndexLoader.js';
 import { GitHubAdapter } from '../adapters/githubAdapter.js';
 
 import type { 
   LambdaConfig, 
   PRProcessMessage,
   AIAnalysisResult 
-} from '@shared/types/index.js';
+} from '../shared/types/index.js';
 
 // =============================================================================
 // MESSAGE PROCESSOR CLASS
@@ -25,9 +24,8 @@ export class MessageProcessor {
   private readonly logger: LambdaConfig['logger'];
   private readonly metrics: LambdaConfig['metrics'];
   private readonly context: LambdaConfig['context'];
-  private readonly jobManager: JobManager;
   private readonly aiAnalyzer: AIAnalyzer;
-  private readonly dependencyAnalyzer: DependencyAnalyzer;
+  private readonly s3IndexLoader: S3IndexLoader;
   private readonly githubAdapter: GitHubAdapter;
 
   constructor(config: LambdaConfig) {
@@ -35,18 +33,14 @@ export class MessageProcessor {
     this.metrics = config.metrics;
     this.context = config.context;
     
-    this.jobManager = new JobManager({ 
-      logger: this.logger 
-    });
     
     this.aiAnalyzer = new AIAnalyzer({ 
       logger: this.logger,
       metrics: this.metrics 
     });
     
-    this.dependencyAnalyzer = new DependencyAnalyzer({
-      logger: this.logger,
-      metrics: this.metrics
+    this.s3IndexLoader = new S3IndexLoader({
+      logger: this.logger
     });
     
     this.githubAdapter = new GitHubAdapter({ 
@@ -72,8 +66,8 @@ export class MessageProcessor {
     });
 
     try {
-      // 2. Actualizar estado del job a 'processing'
-      await this.jobManager.updateJobStatus(jobId, 'processing');
+      // 2. Log inicio del procesamiento
+      this.logger.info('Job processing started', { jobId });
 
       // 3. Obtener datos del PR desde GitHub
       const prData = await this.githubAdapter.getPullRequest(
@@ -96,23 +90,63 @@ export class MessageProcessor {
 
       // 5. Analizar con IA si hay archivos para revisar
       if (fileChanges.length === 0) {
-        await this.jobManager.updateJobStatus(jobId, 'completed', 'No files to analyze');
+        this.logger.info('Job completed - no files to analyze', { jobId });
         return;
       }
 
-      // 6. Realizar análisis de dependencias
-      const dependencyAnalysis = await this.dependencyAnalyzer.analyzeChanges({
-        repository: message.payload.repository,
-        fileChanges: fileChanges,
-        prNumber: message.payload.prNumber
-      });
+      // 6. Cargar índice de dependencias desde S3 (si está disponible)
+      let dependencyAnalysis: any = null;
+      
+      if (message.payload.artifacts?.dependencyIndex) {
+        try {
+          const dependencyIndex = await this.s3IndexLoader.loadDependencyIndex({
+            indexKey: message.payload.artifacts.dependencyIndex,
+            repository: message.payload.repository,
+            jobId
+          });
 
-      this.logger.info('Dependency analysis completed', {
-        jobId,
-        breakingChanges: dependencyAnalysis.breakingChanges.length,
-        affectedFiles: dependencyAnalysis.affectedFiles.length,
-        riskLevel: dependencyAnalysis.riskLevel
-      });
+          // Analizar cambios usando el índice precomputado
+          dependencyAnalysis = await this.s3IndexLoader.analyzeDependencyChanges(
+            dependencyIndex,
+            fileChanges,
+            jobId
+          );
+
+          this.logger.info('Dependency analysis completed using precomputed index', {
+            jobId,
+            breakingChanges: dependencyAnalysis.breakingChanges.length,
+            affectedFiles: dependencyAnalysis.affectedFiles.length,
+            riskLevel: dependencyAnalysis.riskLevel
+          });
+
+        } catch (error) {
+          this.logger.warn('Failed to load dependency index from S3, continuing without it', {
+            jobId,
+            indexKey: message.payload.artifacts.dependencyIndex,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+
+          dependencyAnalysis = {
+            breakingChanges: [],
+            affectedFiles: [],
+            affectedClasses: [],
+            riskLevel: 'low',
+            summary: 'Dependency index not available - analysis skipped'
+          };
+        }
+      } else {
+        this.logger.info('No dependency index artifacts provided, skipping dependency analysis', {
+          jobId
+        });
+
+        dependencyAnalysis = {
+          breakingChanges: [],
+          affectedFiles: [],
+          affectedClasses: [],
+          riskLevel: 'low',
+          summary: 'No dependency artifacts provided'
+        };
+      }
 
       // 7. Realizar análisis con IA (mejorado con contexto de dependencias)
       const analysisResult = await this.aiAnalyzer.analyzeCode({
@@ -133,8 +167,8 @@ export class MessageProcessor {
         dependencyAnalysis
       );
 
-      // 8. Actualizar estado del job a 'completed'
-      await this.jobManager.updateJobStatus(jobId, 'completed');
+      // 8. Log completion
+      this.logger.info('Job completed successfully', { jobId });
 
       // 9. Métricas de éxito
       this.metrics?.addMetric('JobCompleted', 'Count', 1);
@@ -149,9 +183,9 @@ export class MessageProcessor {
       });
 
     } catch (error) {
-      // Actualizar estado del job a 'failed'
+      // Log error
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      await this.jobManager.updateJobStatus(jobId, 'failed', errorMessage);
+      this.logger.error('Job failed', { jobId, errorMessage });
 
       // Métricas de error
       this.metrics?.addMetric('JobFailed', 'Count', 1);

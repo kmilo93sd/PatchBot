@@ -1,0 +1,72 @@
+{
+  "action": "opened",
+  "number": 63,
+  "pull_request": {
+    "id": 1234567890,
+    "number": 63,
+    "state": "open",
+    "title": "feat: implement new banking endpoints",
+    "body": "This PR implements new banking endpoints for the BFF service",
+    "html_url": "https://github.com/nubox-spa/sas-banking-bff/pull/63",
+    "user": {
+      "login": "developer",
+      "id": 12345,
+      "type": "User",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12345?v=4",
+      "html_url": "https://github.com/developer"
+    },
+    "head": {
+      "ref": "feature/banking-endpoints",
+      "sha": "a1b2c3d4e5f6789012345678901234567890abcd",
+      "repo": {
+        "id": 987654321,
+        "name": "sas-banking-bff",
+        "full_name": "nubox-spa/sas-banking-bff",
+        "private": false,
+        "owner": {
+          "login": "nubox-spa",
+          "id": 54321,
+          "type": "Organization"
+        },
+        "html_url": "https://github.com/nubox-spa/sas-banking-bff",
+        "clone_url": "https://github.com/nubox-spa/sas-banking-bff.git",
+        "ssh_url": "git@github.com:nubox-spa/sas-banking-bff.git",
+        "default_branch": "main"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "b2c3d4e5f67890123456789012345678901234ab",
+      "repo": {
+        "id": 987654321,
+        "name": "sas-banking-bff",
+        "full_name": "nubox-spa/sas-banking-bff",
+        "private": false,
+        "owner": {
+          "login": "nubox-spa",
+          "id": 54321,
+          "type": "Organization"
+        },
+        "html_url": "https://github.com/nubox-spa/sas-banking-bff",
+        "clone_url": "https://github.com/nubox-spa/sas-banking-bff.git",
+        "ssh_url": "git@github.com:nubox-spa/sas-banking-bff.git",
+        "default_branch": "main"
+      }
+    }
+  },
+  "repository": {
+    "id": 987654321,
+    "name": "sas-banking-bff",
+    "full_name": "nubox-spa/sas-banking-bff",
+    "private": false,
+    "owner": {
+      "login": "nubox-spa",
+      "id": 54321,
+      "type": "Organization"
+    },
+    "html_url": "https://github.com/nubox-spa/sas-banking-bff",
+    "clone_url": "https://github.com/nubox-spa/sas-banking-bff.git",
+    "ssh_url": "git@github.com:nubox-spa/sas-banking-bff.git",
+    "default_branch": "main"
+  }
+}

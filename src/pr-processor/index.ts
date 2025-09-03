@@ -8,9 +8,9 @@ import { SQSEvent, SQSRecord, Context, SQSBatchResponse } from 'aws-lambda';
 
 import { MessageProcessor } from './core/messageProcessor.js';
 import { ErrorHandler } from './utils/errorHandler.js';
-import { POWERTOOLS_CONFIG } from '@shared/constants/index.js';
+import { POWERTOOLS_CONFIG } from './shared/constants/index.js';
 
-import type { LambdaHandler } from '@shared/types/index.js';
+import type { LambdaHandler } from './shared/types/index.js';
 
 // =============================================================================
 // CONFIGURACIÓN DE POWERTOOLS

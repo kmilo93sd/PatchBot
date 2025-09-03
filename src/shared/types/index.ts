@@ -112,8 +112,15 @@ export interface SQSMessage<T = any> {
   };
 }
 
-export interface PRProcessMessage extends SQSMessage<PRData & { jobId: string }> {
-  source: 'pr-receptor';
+export interface PRProcessMessage extends SQSMessage<PRData & { 
+  jobId: string;
+  branch?: string;
+  artifacts?: {
+    codeArchive: string;
+    dependencyIndex: string;
+  };
+}> {
+  source: 'pr-receptor' | 'pr-indexer';
 }
 
 // =============================================================================

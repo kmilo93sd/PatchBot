@@ -12,6 +12,7 @@ Parameters:
     Default: internal
     AllowedValues:
       - internal
+      - dev
       - development
       - staging
       - production
@@ -37,6 +38,12 @@ Parameters:
     Type: Number
     Default: 180
     Description: Timeout de Lambda (segundos)
+  
+  GitHubToken:
+    Type: String
+    Default: ""
+    Description: GitHub Personal Access Token (se puede dejar vacío para usar desde Secrets Manager)
+    NoEcho: true
 
 # Variables globales estándar NBX
 Globals:
@@ -78,44 +85,43 @@ Resources:
         - nodejs20.x
       RetentionPolicy: Retain
 
-  # ================================
-  # DYNAMODB - TABLA DE JOBS
-  # ================================
-  ReviewJobsTable:
-    Type: AWS::DynamoDB::Table
+  TreeSitterLayer:
+    Type: AWS::Serverless::LayerVersion
     Properties:
-      TableName: !Sub "review-jobs-${envName}"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: jobId
-          AttributeType: S
-        - AttributeName: timestamp
-          AttributeType: N
-        - AttributeName: status
-          AttributeType: S
-      KeySchema:
-        - AttributeName: jobId
-          KeyType: HASH
-        - AttributeName: timestamp
-          KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: StatusIndex
-          KeySchema:
-            - AttributeName: status
-              KeyType: HASH
-            - AttributeName: timestamp
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
+      LayerName: !Sub "${envName}-tree-sitter-layer"
+      Description: Layer con tree-sitter y tree-sitter-java para análisis de código
+      ContentUri: layers/tree-sitter-layer/
+      CompatibleRuntimes:
+        - nodejs20.x
+      RetentionPolicy: Retain
+
+  # Usamos una layer pública oficial por ARN (no necesitamos crear la layer)
+  # GitLayer se define directamente en el PRIndexerFunction usando ARN
+
 
   # ================================
-  # SQS - COLA DE PROCESAMIENTO
+  # SQS - COLAS
   # ================================
+  
+  # Cola para indexación (Receptor -> Indexer)
+  PRIndexQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "pr-index-queue-${envName}"
+      VisibilityTimeout: 3600  # 60 minutos (6x timeout de función indexer)
+      MessageRetentionPeriod: 1209600  # 14 días
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PRIndexDLQ.Arn
+        maxReceiveCount: 2
+
+  PRIndexDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "pr-index-queue-dlq-${envName}"
+      MessageRetentionPeriod: 1209600  # 14 días
+
+  # Cola para procesamiento (Indexer -> Processor)
   PRProcessQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -151,6 +157,22 @@ Resources:
             NoncurrentVersionExpirationInDays: 30
 
   # ================================
+  # S3 - BUCKET DE ARTEFACTOS PR
+  # ================================
+  PRArtefactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "pr-artefacts-${envName}-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtefacts
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+
+  # ================================
   # API GATEWAY
   # ================================
   PRRevisorApi:
@@ -164,44 +186,103 @@ Resources:
         AllowOrigin: "'*'"
 
   # ================================
+  # FUNCIÓN LAMBDA - INDEXER
+  # ================================
+  PRIndexerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - index.ts
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+          - '@aws-lambda-powertools/*'
+          - 'tree-sitter'
+          - 'tree-sitter-java'
+          - 'uuid'
+    Properties:
+      FunctionName: !Join ["-", [!Ref envName, "nbx", "pr-indexer", "lambda"]]
+      CodeUri: src/pr-indexer/
+      Handler: index.handler
+      Timeout: 600  # 10 minutos para clonar y indexar
+      MemorySize: 2048  # Más memoria para operaciones Git y indexing
+      Layers:
+        - !Ref AwsSdkLayer
+        - !Ref TreeSitterLayer
+        # Layer pública oficial de AWS con Git para us-east-1
+        - arn:aws:lambda:us-east-1:553035198032:layer:git-lambda2:8
+        # # Layer de New Relic para monitoreo (deshabilitado temporalmente)
+        # - arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:8
+      Environment:
+        Variables:
+          # NEW_RELIC_LAMBDA_HANDLER: index.handler
+          # Variables de aplicación
+          PR_ARTIFACTS_BUCKET: !Ref PRArtefactsBucket
+          PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
+          REQUEST_ID_HEADER: x-request-id
+          GITHUB_TOKEN: !Ref GitHubToken
+          # Git config
+          GIT_CONFIG_GLOBAL: /tmp/.gitconfig
+          GIT_CONFIG_NOGLOBAL: true
+          PATH: "/opt/bin:/usr/local/bin:/usr/bin:/bin"
+      Policies:
+        # Política para obtener licencia de New Relic
+        # # Política para obtener licencia de New Relic (deshabilitado temporalmente)
+        # - AWSSecretsManagerGetSecretValuePolicy:
+        #     SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
+        # Permisos S3 para subir artefactos
+        - S3CrudPolicy:
+            BucketName: !Ref PRArtefactsBucket
+        # Permisos SQS para enviar mensajes
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PRProcessQueue.QueueName
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PRIndexQueue.Arn
+            BatchSize: 1
+
+  # ================================
   # FUNCIÓN LAMBDA - RECEPTOR
   # ================================
   PRReceptorFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - index.ts
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+          - '@aws-lambda-powertools/*'
+          - 'uuid'
     Properties:
       FunctionName: !Join ["-", [!Ref envName, "nbx", "pr-receptor", "lambda"]]
-      CodeUri: dist/pr-receptor/
+      CodeUri: src/pr-receptor/
       Handler: index.handler
-      Runtime: nodejs20.x
-      Architectures:
-        - x86_64
       Layers:
         - !Ref AwsSdkLayer
-        # Layer de New Relic para monitoreo
-        - arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:8
       Environment:
         Variables:
-          NEW_RELIC_LAMBDA_HANDLER: index.handler
-          # Variables de aplicación
-          REVIEW_JOBS_TABLE: !Ref ReviewJobsTable
-          PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
+          PR_INDEX_QUEUE_URL: !Ref PRIndexQueue
           REQUEST_ID_HEADER: x-request-id
+          GITHUB_TOKEN: !Ref GitHubToken
       Policies:
-        # Política para obtener licencia de New Relic
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
-        # Permisos DynamoDB
-        - DynamoDBWritePolicy:
-            TableName: !Ref ReviewJobsTable
-        # Permisos SQS
+        # Permisos SQS para enviar mensajes a la cola de indexación
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt PRProcessQueue.QueueName
+            QueueName: !GetAtt PRIndexQueue.QueueName
       Events:
         PRWebhook:
           Type: Api
           Properties:
             RestApiId: !Ref PRRevisorApi
-            Path: /review-pr
+            Path: /webhook
             Method: POST
 
   # ================================
@@ -209,13 +290,23 @@ Resources:
   # ================================
   PRProcessorFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - index.ts
+        Target: es2020
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+          - '@aws-lambda-powertools/*'
+          - 'tree-sitter'
+          - 'tree-sitter-java'
+          - 'uuid'
     Properties:
       FunctionName: !Join ["-", [!Ref envName, "nbx", "pr-processor", "lambda"]]
-      CodeUri: dist/pr-processor/
+      CodeUri: src/pr-processor/
       Handler: index.handler
-      Runtime: nodejs20.x
-      Architectures:
-        - x86_64
       Timeout: 900  # 15 minutos para procesamiento IA
       MemorySize: 1024  # Más memoria para procesamiento
       Layers:
@@ -226,20 +317,22 @@ Resources:
         Variables:
           # NEW_RELIC_LAMBDA_HANDLER: app.lambdaHandler
           # Variables de aplicación
-          REVIEW_JOBS_TABLE: !Ref ReviewJobsTable
           PR_PROCESS_QUEUE_URL: !Ref PRProcessQueue
           DEPENDENCY_INDEX_BUCKET: !Ref DependencyIndexBucket
+          PR_ARTIFACTS_BUCKET: !Ref PRArtefactsBucket
           ENABLE_DEPENDENCY_ANALYSIS: true
+          GITHUB_TOKEN: !Ref GitHubToken
       Policies:
         # Política para obtener licencia de New Relic
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
-        # Permisos DynamoDB
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ReviewJobsTable
+        # # Política para obtener licencia de New Relic (deshabilitado temporalmente)
+        # - AWSSecretsManagerGetSecretValuePolicy:
+        #     SecretArn: !ImportValue NewRelicLicenseKeySecret-NewRelic-LicenseKeySecretARN
         # Permisos S3 para leer índices de dependencias
         - S3ReadPolicy:
             BucketName: !Ref DependencyIndexBucket
+        # Permisos S3 para leer artefactos de PR
+        - S3ReadPolicy:
+            BucketName: !Ref PRArtefactsBucket
         # Permisos Bedrock (para la fase 3)
         - Statement:
           - Effect: Allow
@@ -261,20 +354,20 @@ Resources:
 # OUTPUTS
 # ================================
 Outputs:
-  PRRevisorApiUrl:
+  WebhookUrl:
     Description: "URL del API Gateway para webhooks de GitHub"
-    Value: !Sub "https://${PRRevisorApi}.execute-api.${AWS::Region}.amazonaws.com/${envName}/review-pr"
+    Value: !Sub "https://${PRRevisorApi}.execute-api.${AWS::Region}.amazonaws.com/${envName}/webhook"
     Export:
-      Name: !Sub "${AWS::StackName}-ApiUrl"
-  
-  ReviewJobsTableName:
-    Description: "Nombre de la tabla DynamoDB de jobs"
-    Value: !Ref ReviewJobsTable
-    Export:
-      Name: !Sub "${AWS::StackName}-ReviewJobsTable"
+      Name: !Sub "${AWS::StackName}-WebhookUrl"
   
   PRProcessQueueUrl:
     Description: "URL de la cola SQS de procesamiento"
     Value: !Ref PRProcessQueue
     Export:
       Name: !Sub "${AWS::StackName}-ProcessQueue"
+  
+  PRArtefactsBucketName:
+    Description: "Nombre del bucket S3 para artefactos de PR"
+    Value: !Ref PRArtefactsBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-ArtefactsBucket"

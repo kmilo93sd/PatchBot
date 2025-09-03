@@ -1,0 +1,10 @@
+{
+  "action": "opened",
+  "number": 63,
+  "pull_request": {
+    "number": 63
+  },
+  "repository": {
+    "full_name": "nubox-spa/sas-banking-bff"
+  }
+}

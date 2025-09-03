@@ -5,10 +5,10 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { fromIni } from '@aws-sdk/credential-providers';
 
-import { BedrockError, ProcessingError } from '@shared/types/errors.js';
-import { AWS_CONFIG, AI_CONFIG } from '@shared/constants/index.js';
-import { getCurrentTimestamp } from '@shared/utils/index.js';
-import { FileValidator } from '@shared/validation/validators.js';
+import { BedrockError, ProcessingError } from '../shared/types/errors.js';
+import { AWS_CONFIG, AI_CONFIG } from '../shared/constants/index.js';
+import { getCurrentTimestamp } from '../shared/utils/index.js';
+import { FileValidator } from '../shared/validation/validators.js';
 
 import type { 
   ServiceConfig,
@@ -17,7 +17,7 @@ import type {
   CodeIssue,
   CodeSuggestion,
   FileChange
-} from '@shared/types/index.js';
+} from '../shared/types/index.js';
 import type { DependencyAnalysisResult } from './dependencyAnalyzer.js';
 
 // =============================================================================

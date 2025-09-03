@@ -4,15 +4,15 @@
 
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
-import { SQSError } from '@shared/types/errors.js';
-import { AWS_CONFIG } from '@shared/constants/index.js';
-import { validators } from '@shared/validation/schemas.js';
+import { SQSError } from '../shared/types/errors.js';
+import { AWS_CONFIG } from '../shared/constants/index.js';
+import { validators } from '../shared/validation/schemas.js';
 
 import type { 
   ServiceConfig,
   SQSMessage,
   PRProcessMessage 
-} from '@shared/types/index.js';
+} from '../shared/types/index.js';
 
 // =============================================================================
 // SQS ADAPTER CLASS
@@ -25,7 +25,7 @@ export class SQSAdapter {
 
   constructor(config: ServiceConfig) {
     this.logger = config.logger;
-    this.queueUrl = AWS_CONFIG.PR_PROCESS_QUEUE_URL;
+    this.queueUrl = AWS_CONFIG.PR_INDEX_QUEUE_URL;
 
     // Crear cliente SQS
     this.sqsClient = new SQSClient({
@@ -128,7 +128,7 @@ export class SQSAdapter {
     }
 
     // Validar formato de URL de SQS
-    if (!this.queueUrl.includes('.sqs.') || !this.queueUrl.includes('.amazonaws.com')) {
+    if (!this.queueUrl.includes('sqs.') || !this.queueUrl.includes('.amazonaws.com')) {
       throw new SQSError('Invalid SQS queue URL format', {
         queueUrl: this.queueUrl
       });

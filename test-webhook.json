@@ -1,0 +1,26 @@
+{
+  "action": "opened",
+  "pull_request": {
+    "number": 63,
+    "state": "open",
+    "title": "feat: implement new banking endpoints",
+    "head": {
+      "ref": "feature/banking-endpoints",
+      "sha": "abc123def456",
+      "repo": {
+        "name": "sas-banking-bff",
+        "full_name": "nubox-spa/sas-banking-bff",
+        "clone_url": "https://github.com/nubox-spa/sas-banking-bff.git"
+      }
+    },
+    "base": {
+      "ref": "main"
+    }
+  },
+  "repository": {
+    "name": "sas-banking-bff",
+    "full_name": "nubox-spa/sas-banking-bff",
+    "clone_url": "https://github.com/nubox-spa/sas-banking-bff.git",
+    "html_url": "https://github.com/nubox-spa/sas-banking-bff"
+  }
+}

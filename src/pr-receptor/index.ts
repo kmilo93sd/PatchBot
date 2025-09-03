@@ -8,9 +8,9 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda
 
 import { RequestHandler } from './core/requestHandler.js';
 import { ErrorHandler } from './utils/errorHandler.js';
-import { createErrorResponse } from '@shared/utils/index.js';
-import { POWERTOOLS_CONFIG } from '@shared/constants/index.js';
-import type { APIHandler } from '@shared/types/index.js';
+import { createErrorResponse } from './shared/utils/index.js';
+import { POWERTOOLS_CONFIG } from './shared/constants/index.js';
+import type { APIHandler } from './shared/types/index.js';
 
 // =============================================================================
 // CONFIGURACIÓN DE POWERTOOLS
