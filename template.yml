@@ -212,7 +212,7 @@ Resources:
       Layers:
         - !Ref AwsSdkLayer
         - !Ref TreeSitterLayer
-        # Layer pública oficial de AWS con Git para us-east-1
+        # Layer oficial de LambCI para Git (ampliamente usado en la comunidad)
         - arn:aws:lambda:us-east-1:553035198032:layer:git-lambda2:8
         # # Layer de New Relic para monitoreo (deshabilitado temporalmente)
         # - arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:8
